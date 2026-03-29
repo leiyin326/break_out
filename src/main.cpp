@@ -89,10 +89,11 @@ void InitChineseFont() {
 void DrawChineseText(const char* text, int x, int y, int fontSize, Color color) { Vector2 pos = { (float)x, (float)y }; DrawTextEx(chineseFont, text, pos, (float)fontSize, 2, color); }
 void DrawChineseTextCentered(const char* text, int y, int fontSize, Color color) { Vector2 size = MeasureTextEx(chineseFont, text, (float)fontSize, 2); DrawChineseText(text, (GetScreenWidth() - (int)size.x) / 2, y, fontSize, color); }
 
-int CalculateScore(int baseScore, float gameTime) {
+// 修改得分计算函数，新增brickMultiplier参数（适配金色砖块）
+int CalculateScore(int baseScore, float gameTime, float brickMultiplier = 1.0f) {
     float multiplier = 5.0f - gameTime * 0.05f;
     if (multiplier < 1.0f) multiplier = 1.0f;
-    return (int)(baseScore * multiplier);
+    return (int)(baseScore * multiplier * brickMultiplier);
 }
 
 int main() {
@@ -105,9 +106,26 @@ int main() {
     
     std::vector<Brick> bricks;
     Color brickColors[] = {RED, ORANGE, YELLOW, GREEN, BLUE};
+    // 初始化随机种子（确保金色砖块随机生成）
+    srand((unsigned int)time(nullptr));
+    int totalBricks = 5 * 8;  // 总砖块数：5行×8列
+    int goldenBrickCount = 0;
+    const float goldenProbability = 0.1f;  // 10%概率生成金色砖块
+    
+    // 初始化砖块（含金色砖块）
     for (int row = 0; row < 5; row++) {
         for (int col = 0; col < 8; col++) {
-            bricks.emplace_back(50 + col * 95, 80 + row * 35, 85, 25, brickColors[row]);
+            // 随机判断是否为金色砖块（控制总数不超过10%）
+            bool isGolden = (rand() % 100 < 10) && (goldenBrickCount < totalBricks * goldenProbability);
+            if (isGolden) goldenBrickCount++;
+            
+            bricks.emplace_back(
+                50 + col * 95, 
+                80 + row * 35, 
+                85, 25, 
+                brickColors[row],
+                isGolden  // 传递金色砖块标记
+            );
         }
     }
     
@@ -121,8 +139,16 @@ int main() {
         if (IsKeyPressed(KEY_R)) {
             ball.ResetToPaddle(paddle.GetRect().x + paddle.GetRect().width / 2, paddle.GetRect().y);
             score = 0; lives = 3; gameOver = false; victory = false; paused = false; showLeaderboard = false; gameTime = 0.0f;
+            // 重置砖块（重新生成金色砖块）
             bricks.clear();
-            for (int row = 0; row < 5; row++) for (int col = 0; col < 8; col++) bricks.emplace_back(50 + col * 95, 80 + row * 35, 85, 25, brickColors[row]);
+            goldenBrickCount = 0;
+            for (int row = 0; row < 5; row++) {
+                for (int col = 0; col < 8; col++) {
+                    bool isGolden = (rand() % 100 < 10) && (goldenBrickCount < totalBricks * goldenProbability);
+                    if (isGolden) goldenBrickCount++;
+                    bricks.emplace_back(50 + col * 95, 80 + row * 35, 85, 25, brickColors[row], isGolden);
+                }
+            }
             winCount = (int)bricks.size();
         }
         if (IsKeyPressed(KEY_L)) showLeaderboard = !showLeaderboard;
@@ -139,9 +165,14 @@ int main() {
             }
             
             ball.ApplyGravity(); ball.Move(); ball.BounceEdge(screenWidth, screenHeight); ball.BouncePaddle(paddle.GetRect());
+            // 碰撞检测：适配金色砖块得分
             for (auto& brick : bricks) {
                 if (brick.IsActive() && ball.CheckBrickCollision(brick.GetRect())) {
-                    brick.SetActive(false); score += CalculateScore(10, gameTime); winCount--; break;
+                    brick.SetActive(false); 
+                    // 传入砖块倍率（金色1.5倍）
+                    score += CalculateScore(10, gameTime, brick.GetScoreMultiplier()); 
+                    winCount--; 
+                    break;
                 }
             }
             if (winCount <= 0) { gameOver = true; victory = true; if (leaderboard.CanEnter(score)) playerRank = leaderboard.AddScore("Player", score); }
