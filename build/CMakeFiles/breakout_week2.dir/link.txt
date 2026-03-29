@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/breakout_week2.dir/src/main.cpp.o CMakeFiles/breakout_week2.dir/src/Ball.cpp.o CMakeFiles/breakout_week2.dir/src/Paddle.cpp.o CMakeFiles/breakout_week2.dir/src/Brick.cpp.o -o breakout_week2   -L/home/leiyin/projectC/break_out/raylib-5.0/build/raylib  -Wl,-rpath,/home/leiyin/projectC/break_out/raylib-5.0/build/raylib -lraylib -lm -lpthread -ldl -lrt -lX11 

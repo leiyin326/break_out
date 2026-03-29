@@ -1,0 +1,3 @@
+/home/leiyin/projectC/break_out/build/CMakeFiles/breakout_week2.dir
+/home/leiyin/projectC/break_out/build/CMakeFiles/edit_cache.dir
+/home/leiyin/projectC/break_out/build/CMakeFiles/rebuild_cache.dir
