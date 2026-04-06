@@ -63,7 +63,7 @@ CMAKE_BINARY_DIR = /home/leiyin/projectC/break_out/build
 # Directory level rules for the build root directory
 
 # The main recursive "all" target.
-all: CMakeFiles/breakout_week2.dir/all
+all: CMakeFiles/breakout_week4.dir/all
 .PHONY : all
 
 # The main recursive "preinstall" target.
@@ -71,34 +71,34 @@ preinstall:
 .PHONY : preinstall
 
 # The main recursive "clean" target.
-clean: CMakeFiles/breakout_week2.dir/clean
+clean: CMakeFiles/breakout_week4.dir/clean
 .PHONY : clean
 
 #=============================================================================
-# Target rules for target CMakeFiles/breakout_week2.dir
+# Target rules for target CMakeFiles/breakout_week4.dir
 
 # All Build rule for target.
-CMakeFiles/breakout_week2.dir/all:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/breakout_week2.dir/build.make CMakeFiles/breakout_week2.dir/depend
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/breakout_week2.dir/build.make CMakeFiles/breakout_week2.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/leiyin/projectC/break_out/build/CMakeFiles --progress-num=1,2,3,4,5 "Built target breakout_week2"
-.PHONY : CMakeFiles/breakout_week2.dir/all
+CMakeFiles/breakout_week4.dir/all:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/breakout_week4.dir/build.make CMakeFiles/breakout_week4.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/breakout_week4.dir/build.make CMakeFiles/breakout_week4.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/leiyin/projectC/break_out/build/CMakeFiles --progress-num=1,2,3,4,5,6 "Built target breakout_week4"
+.PHONY : CMakeFiles/breakout_week4.dir/all
 
 # Build rule for subdir invocation for target.
-CMakeFiles/breakout_week2.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/leiyin/projectC/break_out/build/CMakeFiles 5
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/breakout_week2.dir/all
+CMakeFiles/breakout_week4.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/leiyin/projectC/break_out/build/CMakeFiles 6
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/breakout_week4.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/leiyin/projectC/break_out/build/CMakeFiles 0
-.PHONY : CMakeFiles/breakout_week2.dir/rule
+.PHONY : CMakeFiles/breakout_week4.dir/rule
 
 # Convenience name for target.
-breakout_week2: CMakeFiles/breakout_week2.dir/rule
-.PHONY : breakout_week2
+breakout_week4: CMakeFiles/breakout_week4.dir/rule
+.PHONY : breakout_week4
 
 # clean rule for target.
-CMakeFiles/breakout_week2.dir/clean:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/breakout_week2.dir/build.make CMakeFiles/breakout_week2.dir/clean
-.PHONY : CMakeFiles/breakout_week2.dir/clean
+CMakeFiles/breakout_week4.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/breakout_week4.dir/build.make CMakeFiles/breakout_week4.dir/clean
+.PHONY : CMakeFiles/breakout_week4.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.

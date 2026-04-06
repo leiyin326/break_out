@@ -1,0 +1,43 @@
+{
+  "window": {
+    "width": 800,
+    "height": 600,
+    "border": 5,
+    "bg_r": 30,
+    "bg_g": 30,
+    "bg_b": 40,
+    "bg_a": 255,
+    "fall_offset": 50,
+    "score_penalty": 50
+  },
+  "ball": {
+    "radius": 10.0,
+    "start_x": 400.0,
+    "start_y": 530.0
+  },
+  "paddle": {
+    "width": 120.0,
+    "height": 15.0,
+    "start_x": 340.0,
+    "start_y": 550.0,
+    "speed_normal": 18.0,
+    "speed_boost": 28.0
+  },
+  "bricks": {
+    "rows": 5,
+    "cols": 8,
+    "width": 85.0,
+    "height": 25.0,
+    "start_x": 50.0,
+    "start_y": 80.0,
+    "spacing_x": 95.0,
+    "spacing_y": 35.0
+  },
+  "game": {
+    "initial_lives": 3,
+    "base_score_per_brick": 10,
+    "time_multiplier_base": 5.0,
+    "time_multiplier_decay": 0.05,
+    "time_multiplier_min": 1.0
+  }
+}
