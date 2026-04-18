@@ -18,6 +18,7 @@ public:
     Rectangle GetRect() { return rect; }
     bool IsGolden() { return isGolden; }  // 新增：获取是否为金色砖块
     float GetScoreMultiplier() { return isGolden ? 1.5f : 1.0f; }  // 新增：得分倍率
+    Color GetColor() { return color; }
 };
 
 #endif

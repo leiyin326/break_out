@@ -5,16 +5,17 @@
 #include "Ball.h"
 #include "Paddle.h"
 #include "Brick.h"
+#include "PowerUp.h"
+#include "Particle.h"
 #include "json.hpp"
 #include <vector>
 #include <fstream>
-#include <string>
+#include <memory>
 
 using json = nlohmann::json;
 
 class Game {
 public:
-    // ✅ 把枚举移到类内部！现在它就是 Game 的成员了！
     enum GameState {
         STATE_MENU,
         STATE_LEVEL_SELECT,
@@ -30,14 +31,22 @@ private:
     Paddle paddle;
     std::vector<Brick> bricks;
     Font font;
-
+    Sound sndBrick;
+    Sound sndPowerUp;
+    Sound sndVictory;
     int score;
     int lives;
     float gameTime;
     int winCount;
-    GameState currentState;  // 自动识别类内枚举
+    GameState currentState;
 
-    // 配置结构体
+    std::vector<std::unique_ptr<PowerUpEffect>> powerUps;
+    std::unique_ptr<ParticleSystem> brickParticles;
+    std::unique_ptr<ParticleSystem> powerUpAura;
+    bool audioLoaded;
+
+    PowerUpConfig powerUpCfg;
+
     struct {
         int width;
         int height;
@@ -60,6 +69,7 @@ private:
         float startY;
         float speedNormal;
         float speedBoost;
+        float maxWidth;
     } cfgPaddle;
 
     struct {
@@ -83,6 +93,9 @@ private:
 
     void CreateBricks();
     void ResetGame();
+    void SpawnPowerUp(Vector2 pos);
+    void CheckPowerUpCollisions();
+    void CleanupExpiredPowerUps();
 
 public:
     Game();
@@ -91,6 +104,10 @@ public:
     void Update();
     void Draw();
     void Shutdown();
+
+    int& GetLives() { return lives; }
+    Paddle& GetPaddle() { return paddle; }
+    std::vector<Ball> balls;
 };
 
 #endif

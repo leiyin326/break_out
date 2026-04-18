@@ -13,6 +13,7 @@ public:
     void MoveRight(float speed);
     void Draw();
     Rectangle GetRect() { return rect; }
+    void SetWidth(float w) { rect.width = w; }
 };
 
 #endif

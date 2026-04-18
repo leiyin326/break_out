@@ -21,7 +21,8 @@
     "start_x": 340.0,
     "start_y": 550.0,
     "speed_normal": 18.0,
-    "speed_boost": 28.0
+    "speed_boost": 28.0,
+    "max_width": 240.0
   },
   "bricks": {
     "rows": 5,
@@ -39,5 +40,12 @@
     "time_multiplier_base": 5.0,
     "time_multiplier_decay": 0.05,
     "time_multiplier_min": 1.0
+  },
+  "powerups": {
+    "drop_chance": 0.25,
+    "duration": 8.0,
+    "fall_speed": 120.0,
+    "size": 16.0,
+    "max_particles": 150
   }
 }
