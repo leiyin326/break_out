@@ -12,6 +12,7 @@ private:
     float bounceForce;
     bool launched;
     float launchCooldown;
+    float lifeTime = -1; // -1=永久主球，>0=倒计时
     
 public:
     Ball(Vector2 pos, Vector2 sp, float r);
@@ -33,6 +34,9 @@ public:
     Vector2 GetSpeed() { return speed; }
     void SetSpeed(Vector2 sp) { speed = sp; }
     bool IsLaunched() { return launched; }
+    
+    float GetLifeTime() { return lifeTime; }
+    void SetLifeTime(float t) { lifeTime = t; }
 };
 
 #endif

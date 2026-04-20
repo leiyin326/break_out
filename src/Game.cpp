@@ -4,10 +4,10 @@
 #include <vector>
 #include <random>
 #include <algorithm>
+#include <cmath>
 
 Game::Game()
-    : ball({ 0,0 }, { 0,0 }, 0),
-    paddle(0,0,0,0),
+    : paddle(0,0,0,0),
     currentState(Game::STATE_MENU),
     audioLoaded(false)
 {
@@ -25,10 +25,8 @@ Game::Game()
 
     brickParticles = std::make_unique<ParticleSystem>(150);
     powerUpAura = std::make_unique<ParticleSystem>(80);
-
     SetRandomSeed((unsigned int)time(nullptr));
 
-    ball = Ball({ cfgBall.startX, cfgBall.startY }, { 0,0 }, cfgBall.radius);
     paddle = Paddle(cfgPaddle.startX, cfgPaddle.startY, cfgPaddle.width, cfgPaddle.height);
 }
 
@@ -103,9 +101,9 @@ void Game::Init() {
 
     InitAudioDevice();
     if (!IsAudioDeviceReady()) {
-    TraceLog(LOG_ERROR, "Audio device NOT ready!");
-}
-    // 只加载一次！不要在 Update 里重复 LoadSound
+        TraceLog(LOG_ERROR, "Audio device NOT ready!");
+    }
+
     sndBrick = LoadSound("sounds/brick.wav");
     sndPowerUp = LoadSound("sounds/powerup.wav");
     sndVictory = LoadSound("sounds/victory.wav");
@@ -159,7 +157,11 @@ void Game::ResetGame() {
     brickParticles->Clear();
     powerUpAura->Clear();
     CreateBricks();
-    ball.ResetToPaddle(paddle.GetRect().x + paddle.GetRect().width / 2, paddle.GetRect().y);
+
+    // 初始化一个主球
+    balls.clear();
+    balls.emplace_back(Vector2{ cfgBall.startX, cfgBall.startY }, Vector2{ 0,0 }, cfgBall.radius);
+    balls[0].ResetToPaddle(paddle.GetRect().x + paddle.GetRect().width / 2, paddle.GetRect().y);
 }
 
 void Game::SpawnPowerUp(Vector2 pos) {
@@ -190,6 +192,21 @@ void Game::CheckPowerUpCollisions() {
             }
             if (pu->GetType() == PowerUpType::EXTRA_LIFE) {
                 lives++;
+            }
+
+            // 👇 多球道具：生成2个限时8秒的球
+            if (pu->GetType() == PowerUpType::MULTI_BALL) {
+                if (balls.empty()) return;
+                Ball& main = balls[0];
+                for (int i = 0; i < 2; i++) {
+                    Ball b = main;
+                    b.SetSpeed(Vector2{
+                        main.GetSpeed().x + GetRandomValue(-70,70),
+                        main.GetSpeed().y + GetRandomValue(-40,-60)
+                    });
+                    b.SetLifeTime(8.0f);
+                    balls.push_back(b);
+                }
             }
         }
     }
@@ -222,6 +239,40 @@ void Game::Update() {
         TraceLog(LOG_INFO, "DEBUG: 所有道具已清除");
     }
 
+    // ==============================================
+    // 多球更新：倒计时 + 自动删除过期球
+    // ==============================================
+    for (auto& ball : balls) {
+        if (ball.GetLifeTime() > 0) {
+            ball.SetLifeTime(ball.GetLifeTime() - dt);
+        }
+    }
+
+    auto it = balls.begin();
+    while (it != balls.end()) {
+        if (it->GetLifeTime() <= 0 && it->GetLifeTime() != -1) {
+            it = balls.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    // ==============================================
+    // 球与球碰撞物理
+    // ==============================================
+    for (int i = 0; i < (int)balls.size(); i++) {
+        for (int j = i+1; j < (int)balls.size(); j++) {
+            Ball& a = balls[i];
+            Ball& b = balls[j];
+            if (CheckCollisionCircles(a.GetPosition(), a.GetRadius(), b.GetPosition(), b.GetRadius())) {
+                Vector2 va = a.GetSpeed();
+                Vector2 vb = b.GetSpeed();
+                a.SetSpeed(vb);
+                b.SetSpeed(va);
+            }
+        }
+    }
+
     switch (currentState) {
     case Game::STATE_MENU:
         if (IsKeyPressed(KEY_ENTER)) currentState = Game::STATE_LEVEL_SELECT;
@@ -241,7 +292,9 @@ void Game::Update() {
         if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) paddle.MoveLeft(sp);
         if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) paddle.MoveRight(sp);
         if (IsKeyPressed(KEY_SPACE)) {
-            ball.Launch(paddle.GetRect().x + paddle.GetRect().width/2, paddle.GetRect().width);
+            for (auto& ball : balls) {
+                ball.Launch(paddle.GetRect().x + paddle.GetRect().width/2, paddle.GetRect().width);
+            }
             currentState = STATE_PLAYING;
         }
         break;
@@ -256,25 +309,31 @@ void Game::Update() {
         if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) paddle.MoveLeft(sp);
         if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) paddle.MoveRight(sp);
 
-        ball.ApplyGravity();
-        ball.Move();
-        ball.BounceEdge(cfgWindow.width, cfgWindow.height);
-        ball.BouncePaddle(paddle.GetRect());
+        // 更新所有球
+        for (auto& ball : balls) {
+            ball.ApplyGravity();
+            ball.Move();
+            ball.BounceEdge(cfgWindow.width, cfgWindow.height);
+            ball.BouncePaddle(paddle.GetRect());
+        }
 
-        bool hitProcessed = false;
-        for (auto& b : bricks) {
-            if (!hitProcessed && b.IsActive() && ball.CheckBrickCollision(b.GetRect())) {
-                b.SetActive(false);
-                brickParticles->Emit({b.GetRect().x + b.GetRect().width/2, b.GetRect().y + b.GetRect().height/2}, b.GetColor());
-                StopSound(sndBrick);
-                PlaySound(sndBrick);
-                SpawnPowerUp({b.GetRect().x + b.GetRect().width/2, b.GetRect().y + b.GetRect().height/2});
+        // 所有球碰撞砖块
+        for (auto& ball : balls) {
+            bool hitProcessed = false;
+            for (auto& b : bricks) {
+                if (!hitProcessed && b.IsActive() && ball.CheckBrickCollision(b.GetRect())) {
+                    b.SetActive(false);
+                    brickParticles->Emit({b.GetRect().x + b.GetRect().width/2, b.GetRect().y + b.GetRect().height/2}, b.GetColor());
+                    StopSound(sndBrick);
+                    PlaySound(sndBrick);
+                    SpawnPowerUp({b.GetRect().x + b.GetRect().width/2, b.GetRect().y + b.GetRect().height/2});
 
-                float mul = cfgGame.timeMultBase - gameTime * cfgGame.timeMultDecay;
-                if (mul < cfgGame.timeMultMin) mul = cfgGame.timeMultMin;
-                score += (int)(cfgGame.baseScorePerBrick * mul * b.GetScoreMultiplier());
-                winCount--;
-                hitProcessed = true;
+                    float mul = cfgGame.timeMultBase - gameTime * cfgGame.timeMultDecay;
+                    if (mul < cfgGame.timeMultMin) mul = cfgGame.timeMultMin;
+                    score += (int)(cfgGame.baseScorePerBrick * mul * b.GetScoreMultiplier());
+                    winCount--;
+                    hitProcessed = true;
+                }
             }
         }
 
@@ -297,19 +356,33 @@ void Game::Update() {
             break;
         }
 
-        if (ball.GetPosition().y > cfgWindow.height + cfgWindow.fallOffset) {
+        // ==============================================
+        // 生命规则：所有球都掉下去才减命
+        // ==============================================
+        int aliveBalls = 0;
+        for (auto& ball : balls) {
+            if (ball.GetPosition().y < cfgWindow.height + cfgWindow.fallOffset) {
+                aliveBalls++;
+            }
+        }
+
+        if (aliveBalls == 0) {
             lives--;
             score -= cfgWindow.scorePenalty;
             if (score < 0) score = 0;
             paddle.SetWidth(cfgPaddle.width);
             powerUps.clear();
 
-            if (lives <= 0) currentState = STATE_GAME_OVER;
-            else {
-                ball.ResetToPaddle(paddle.GetRect().x + paddle.GetRect().width/2, paddle.GetRect().y);
+            if (lives <= 0) {
+                currentState = STATE_GAME_OVER;
+            } else {
+                balls.clear();
+                balls.emplace_back(Vector2{ cfgBall.startX, cfgBall.startY }, Vector2{ 0,0 }, cfgBall.radius);
+                balls[0].ResetToPaddle(paddle.GetRect().x + paddle.GetRect().width/2, paddle.GetRect().y);
                 currentState = STATE_READY;
             }
         }
+
         break;
     }
 
@@ -355,7 +428,11 @@ void Game::Draw() {
 
     for (auto& b : bricks) b.Draw();
     paddle.Draw();
-    ball.Draw();
+
+    // 绘制所有球
+    for (auto& ball : balls) {
+        ball.Draw();
+    }
 
     for (auto& pu : powerUps) {
         pu->Draw();
@@ -365,6 +442,7 @@ void Game::Draw() {
     DrawTextEx(font, TextFormat("分数: %d", score), {20, 10}, 24, 1, YELLOW);
     DrawTextEx(font, TextFormat("生命: %d", lives), {650, 10}, 24, 1, lives > 1 ? GREEN : RED);
     DrawTextEx(font, TextFormat("时间: %.1f", gameTime), {20, 40}, 20, 1, LIGHTGRAY);
+    DrawTextEx(font, TextFormat("球数量: %d", (int)balls.size()), {20, 70}, 20, 1, SKYBLUE);
 
     switch (currentState) {
     case Game::STATE_READY:
@@ -395,7 +473,6 @@ void Game::Draw() {
 
 void Game::Shutdown() {
     UnloadFont(font);
-
     UnloadSound(sndBrick);
     UnloadSound(sndPowerUp);
     UnloadSound(sndVictory);

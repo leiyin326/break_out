@@ -27,7 +27,6 @@ public:
     };
 
 private:
-    Ball ball;
     Paddle paddle;
     std::vector<Brick> bricks;
     Font font;
