@@ -4,6 +4,11 @@
 #include <cstdlib>
 #include <ctime>
 
+// ✅ 新增：给联机同步球位置
+void Ball::SetPosition(Vector2 pos) {
+    position = pos;
+}
+
 Ball::Ball(Vector2 pos, Vector2 sp, float r) {
     position = pos;
     speed = sp;

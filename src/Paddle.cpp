@@ -5,6 +5,10 @@ Paddle::Paddle(float x, float y, float width, float height) {
     screenWidth = 800;
 }
 
+void Paddle::SetPosX(float x) {
+    rect.x = x;
+}
+
 void Paddle::MoveLeft(float speed) {
     rect.x -= speed;
     if (rect.x < 5) rect.x = 5;
@@ -12,7 +16,8 @@ void Paddle::MoveLeft(float speed) {
 
 void Paddle::MoveRight(float speed) {
     rect.x += speed;
-    if (rect.x + rect.width > screenWidth - 5) rect.x = screenWidth - rect.width - 5;
+    if (rect.x + rect.width > screenWidth - 5) 
+        rect.x = screenWidth - rect.width - 5;
 }
 
 void Paddle::Draw() {

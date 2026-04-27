@@ -1,13 +1,13 @@
 #ifndef GAME_H
 #define GAME_H
 
+#include "json.hpp"
 #include "raylib.h"
 #include "Ball.h"
 #include "Paddle.h"
 #include "Brick.h"
 #include "PowerUp.h"
 #include "Particle.h"
-#include "json.hpp"
 #include <vector>
 #include <fstream>
 #include <memory>
@@ -26,6 +26,11 @@ public:
         STATE_VICTORY
     };
 
+    enum GameMode {
+        MODE_COOP,  // 合作模式
+        MODE_VERSUS // 对战模式
+    };
+
 private:
     Paddle paddle;
     std::vector<Brick> bricks;
@@ -38,6 +43,9 @@ private:
     float gameTime;
     int winCount;
     GameState currentState;
+    GameMode gameMode;
+    int remoteScore = 0;
+    int remoteLives = 3;
 
     std::vector<std::unique_ptr<PowerUpEffect>> powerUps;
     std::unique_ptr<ParticleSystem> brickParticles;
@@ -90,6 +98,11 @@ private:
         float timeMultMin;
     } cfgGame;
 
+    // 网络同步变量
+    Paddle remotePaddle;
+    std::vector<Brick> remoteBricks;
+    Ball remoteBall;
+
     void CreateBricks();
     void ResetGame();
     void SpawnPowerUp(Vector2 pos);
@@ -107,6 +120,17 @@ public:
     int& GetLives() { return lives; }
     Paddle& GetPaddle() { return paddle; }
     std::vector<Ball> balls;
+
+    // 联机相关
+private:
+    bool isServer = false;
+    bool isClient = false;
+
+public:
+    void InitNetServer();
+    void InitNetClient(const char* ip);
+    void NetUpdate(float dt);
+    void NetClose();
 };
 
 #endif

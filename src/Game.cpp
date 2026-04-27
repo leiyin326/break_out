@@ -1,14 +1,32 @@
+#define _POSIX_C_SOURCE 200809L
+#include "json.hpp"
+
 #include "Game.h"
 #include "PowerUp.h"
 #include "Particle.h"
+#include <enet/enet.h>
 #include <vector>
 #include <random>
 #include <algorithm>
 #include <cmath>
 
+// 网络同步包结构
+struct SyncPacket {
+    float paddleX;
+    float ballX, ballY;
+    int score;
+    int lives;
+};
+
+static ENetHost* enetHost = nullptr;
+static ENetPeer* enetPeer = nullptr;
+
 Game::Game()
     : paddle(0,0,0,0),
+    remotePaddle(0,0,0,0),
+    remoteBall(Vector2{0,0}, Vector2{0,0}, 10),
     currentState(Game::STATE_MENU),
+    gameMode(Game::MODE_COOP),
     audioLoaded(false)
 {
     LoadConfig("config.json");
@@ -28,6 +46,8 @@ Game::Game()
     SetRandomSeed((unsigned int)time(nullptr));
 
     paddle = Paddle(cfgPaddle.startX, cfgPaddle.startY, cfgPaddle.width, cfgPaddle.height);
+    remotePaddle = Paddle(cfgPaddle.startX, cfgPaddle.startY, cfgPaddle.width, cfgPaddle.height);
+    remoteBall = Ball(Vector2{ cfgBall.startX, cfgBall.startY }, Vector2{0,0}, cfgBall.radius);
 }
 
 void Game::LoadConfig(const std::string& path) {
@@ -146,6 +166,7 @@ void Game::CreateBricks() {
     }
 
     winCount = bricks.size();
+    remoteBricks = bricks;
 }
 
 void Game::ResetGame() {
@@ -158,7 +179,6 @@ void Game::ResetGame() {
     powerUpAura->Clear();
     CreateBricks();
 
-    // 初始化一个主球
     balls.clear();
     balls.emplace_back(Vector2{ cfgBall.startX, cfgBall.startY }, Vector2{ 0,0 }, cfgBall.radius);
     balls[0].ResetToPaddle(paddle.GetRect().x + paddle.GetRect().width / 2, paddle.GetRect().y);
@@ -194,7 +214,6 @@ void Game::CheckPowerUpCollisions() {
                 lives++;
             }
 
-            // 👇 多球道具：生成2个限时8秒的球
             if (pu->GetType() == PowerUpType::MULTI_BALL) {
                 if (balls.empty()) return;
                 Ball& main = balls[0];
@@ -239,9 +258,6 @@ void Game::Update() {
         TraceLog(LOG_INFO, "DEBUG: 所有道具已清除");
     }
 
-    // ==============================================
-    // 多球更新：倒计时 + 自动删除过期球
-    // ==============================================
     for (auto& ball : balls) {
         if (ball.GetLifeTime() > 0) {
             ball.SetLifeTime(ball.GetLifeTime() - dt);
@@ -257,9 +273,6 @@ void Game::Update() {
         }
     }
 
-    // ==============================================
-    // 球与球碰撞物理
-    // ==============================================
     for (int i = 0; i < (int)balls.size(); i++) {
         for (int j = i+1; j < (int)balls.size(); j++) {
             Ball& a = balls[i];
@@ -277,6 +290,8 @@ void Game::Update() {
     case Game::STATE_MENU:
         if (IsKeyPressed(KEY_ENTER)) currentState = Game::STATE_LEVEL_SELECT;
         if (IsKeyPressed(KEY_ESCAPE)) CloseWindow();
+        if (IsKeyPressed(KEY_C)) gameMode = MODE_COOP;
+        if (IsKeyPressed(KEY_V)) gameMode = MODE_VERSUS;
         break;
 
     case Game::STATE_LEVEL_SELECT:
@@ -309,7 +324,6 @@ void Game::Update() {
         if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) paddle.MoveLeft(sp);
         if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) paddle.MoveRight(sp);
 
-        // 更新所有球
         for (auto& ball : balls) {
             ball.ApplyGravity();
             ball.Move();
@@ -317,7 +331,6 @@ void Game::Update() {
             ball.BouncePaddle(paddle.GetRect());
         }
 
-        // 所有球碰撞砖块
         for (auto& ball : balls) {
             bool hitProcessed = false;
             for (auto& b : bricks) {
@@ -356,9 +369,6 @@ void Game::Update() {
             break;
         }
 
-        // ==============================================
-        // 生命规则：所有球都掉下去才减命
-        // ==============================================
         int aliveBalls = 0;
         for (auto& ball : balls) {
             if (ball.GetPosition().y < cfgWindow.height + cfgWindow.fallOffset) {
@@ -401,9 +411,11 @@ void Game::Draw() {
     ClearBackground(cfgWindow.bg);
 
     if (currentState == STATE_MENU) {
-        DrawTextEx(font, "打砖块", {(float)(cfgWindow.width/2 - 120), 150}, 64, 2, YELLOW);
-        DrawTextEx(font, "按 ENTER 开始游戏", {(float)(cfgWindow.width/2 - 150), 300}, 32, 1, WHITE);
-        DrawTextEx(font, "按 ESC 退出游戏", {(float)(cfgWindow.width/2 - 130), 350}, 24, 1, LIGHTGRAY);
+        DrawTextEx(font, "打砖块 - 双窗口联机", {(float)(cfgWindow.width/2 - 160), 100}, 48, 2, YELLOW);
+        DrawTextEx(font, "按 ENTER 开始游戏", {(float)(cfgWindow.width/2 - 150), 200}, 32, 1, WHITE);
+        DrawTextEx(font, "按 ESC 退出游戏", {(float)(cfgWindow.width/2 - 130), 250}, 24, 1, LIGHTGRAY);
+        DrawTextEx(font, "按 C 合作模式 / 按 V 对战模式", {(float)(cfgWindow.width/2 - 180), 300}, 24, 1, GREEN);
+        DrawTextEx(font, gameMode == MODE_COOP ? "当前模式：合作" : "当前模式：对战", {(float)(cfgWindow.width/2 - 100), 350}, 28, 1, gameMode == MODE_COOP ? BLUE : RED);
         EndDrawing();
         return;
     }
@@ -426,24 +438,29 @@ void Game::Draw() {
     brickParticles->Draw();
     powerUpAura->Draw();
 
+    // 绘制砖块
     for (auto& b : bricks) b.Draw();
+    // 绘制本地挡板
     paddle.Draw();
-
-    // 绘制所有球
-    for (auto& ball : balls) {
-        ball.Draw();
-    }
+    // 绘制远程挡板（不同颜色区分）
+    DrawRectangleRec(remotePaddle.GetRect(), RED);
+    DrawRectangleLinesEx(remotePaddle.GetRect(), 2, MAROON);
+    // 绘制球
+    for (auto& ball : balls) ball.Draw();
 
     for (auto& pu : powerUps) {
         pu->Draw();
         DrawRectangleLinesEx(pu->GetRect(), 1, MAGENTA);
     }
 
-    DrawTextEx(font, TextFormat("分数: %d", score), {20, 10}, 24, 1, YELLOW);
-    DrawTextEx(font, TextFormat("生命: %d", lives), {650, 10}, 24, 1, lives > 1 ? GREEN : RED);
-    DrawTextEx(font, TextFormat("时间: %.1f", gameTime), {20, 40}, 20, 1, LIGHTGRAY);
-    DrawTextEx(font, TextFormat("球数量: %d", (int)balls.size()), {20, 70}, 20, 1, SKYBLUE);
-
+    DrawTextEx(font, "本地玩家", {20, 10}, 24, 1, GREEN);
+    DrawTextEx(font, TextFormat("分数: %d", score), {20, 40}, 20, 1, YELLOW);
+    DrawTextEx(font, TextFormat("生命: %d", lives), {20, 70}, 20, 1, lives > 1 ? GREEN : RED);
+    // 远程玩家信息
+    DrawTextEx(font, "远程玩家", {(float)(cfgWindow.width - 150), 10}, 24, 1, RED);
+    DrawTextEx(font, TextFormat("分数: %d", remoteScore), {(float)(cfgWindow.width - 150), 40}, 20, 1, YELLOW);
+    DrawTextEx(font, TextFormat("生命: %d", remoteLives), {(float)(cfgWindow.width - 150), 70}, 20, 1, remoteLives > 1 ? RED : MAROON);
+    DrawTextEx(font, TextFormat("模式: %s", gameMode == MODE_COOP ? "合作" : "对战"), {(float)(cfgWindow.width/2 - 60), 10}, 20, 1, WHITE);
     switch (currentState) {
     case Game::STATE_READY:
         DrawTextEx(font, "按空格发射", {350, 55}, 20, 1, YELLOW);
@@ -477,4 +494,64 @@ void Game::Shutdown() {
     UnloadSound(sndPowerUp);
     UnloadSound(sndVictory);
     CloseAudioDevice();
+}
+
+// ====================== 联机实现 ======================
+void Game::InitNetServer() {
+    isServer = true;
+    if (enet_initialize() != 0) return;
+
+    ENetAddress addr{};
+    addr.host = ENET_HOST_ANY;
+    addr.port = 7777;
+    enetHost = enet_host_create(&addr, 1, 2, 0, 0);
+}
+
+void Game::InitNetClient(const char* ip) {
+    isClient = true;
+    if (enet_initialize() != 0) return;
+
+    ENetAddress addr{};
+    enet_address_set_host(&addr, ip);
+    addr.port = 7777;
+    enetHost = enet_host_create(nullptr, 1, 2, 0, 0);
+    enetPeer = enet_host_connect(enetHost, &addr, 2, 0);
+}
+
+void Game::NetUpdate(float dt) {
+    if (!enetHost) return;
+
+    ENetEvent ev{};
+    while (enet_host_service(enetHost, &ev, 0) > 0) {
+        if (ev.type == ENET_EVENT_TYPE_CONNECT) {
+            enetPeer = ev.peer;
+        }
+        if (ev.type == ENET_EVENT_TYPE_RECEIVE) {
+            SyncPacket pkt = *(SyncPacket*)ev.packet->data;
+            remotePaddle.SetPosX(pkt.paddleX);
+            remoteBall.SetPosition({pkt.ballX, pkt.ballY});
+            remoteScore = pkt.score;
+            remoteLives = pkt.lives;
+            enet_packet_destroy(ev.packet);
+        }
+    }
+
+    if (enetPeer) {
+        SyncPacket pkt{};
+        pkt.paddleX = paddle.GetRect().x;
+        if (!balls.empty()) {
+            pkt.ballX = balls[0].GetPosition().x;
+            pkt.ballY = balls[0].GetPosition().y;
+        }
+        pkt.score = score;
+        pkt.lives = lives;
+
+        ENetPacket* epkt = enet_packet_create(&pkt, sizeof(SyncPacket), ENET_PACKET_FLAG_RELIABLE);
+        enet_peer_send(enetPeer, 0, epkt);
+    }
+}
+
+void Game::NetClose() {
+    if (enetHost) { enet_host_destroy(enetHost); enetHost = nullptr; }
+    enet_deinitialize();
 }

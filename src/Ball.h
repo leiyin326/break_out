@@ -34,6 +34,9 @@ public:
     Vector2 GetSpeed() { return speed; }
     void SetSpeed(Vector2 sp) { speed = sp; }
     bool IsLaunched() { return launched; }
+
+    // 👇 新增：给联机同步用（只加这一行）
+    void SetPosition(Vector2 pos);
     
     float GetLifeTime() { return lifeTime; }
     void SetLifeTime(float t) { lifeTime = t; }
