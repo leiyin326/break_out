@@ -11,6 +11,11 @@
 #include <vector>
 #include <fstream>
 #include <memory>
+// 新增：异步加载所需头文件
+#include <thread>
+#include <mutex>
+#include <future>
+#include <chrono>
 
 using json = nlohmann::json;
 
@@ -24,6 +29,13 @@ public:
         STATE_PAUSED,
         STATE_GAME_OVER,
         STATE_VICTORY
+    };
+
+    // 新增：异步加载状态枚举
+    enum class LoadState {
+        IDLE,       // 未加载
+        LOADING,    // 加载中
+        DONE        // 加载完成
     };
 
 private:
@@ -90,11 +102,21 @@ private:
         float timeMultMin;
     } cfgGame;
 
+    // 新增：异步加载相关成员变量
+    LoadState m_loadState = LoadState::IDLE;
+    std::future<void> m_loadFuture;
+    std::mutex m_loadMutex;       // 保护共享状态的互斥锁
+    bool m_loadingSuccess = false; // 标记加载是否完成
+    Texture2D m_largeTexture;     // 异步加载的大纹理（加分项）
+    Image m_tempImage;            // 临时存储图片数据（加分项）
+
     void CreateBricks();
     void ResetGame();
     void SpawnPowerUp(Vector2 pos);
     void CheckPowerUpCollisions();
     void CleanupExpiredPowerUps();
+    // 新增：异步加载函数声明
+    void LoadLargeTextureAsync();
 
 public:
     Game();

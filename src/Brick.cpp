@@ -10,6 +10,14 @@ Brick::Brick(float x, float y, float width, float height, Color c, bool golden) 
     color = isGolden ? GOLD : c;
 }
 
+// 新增：SetColor 方法实现（核心修复点）
+void Brick::SetColor(Color newColor) {
+    // 金色砖块不允许改颜色，保持金色特性
+    if (!isGolden) {
+        color = newColor;
+    }
+}
+
 void Brick::Draw() {
     if (active) {
         DrawRectangleRec(rect, color);

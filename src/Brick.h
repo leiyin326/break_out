@@ -19,6 +19,8 @@ public:
     bool IsGolden() { return isGolden; }  // 新增：获取是否为金色砖块
     float GetScoreMultiplier() { return isGolden ? 1.5f : 1.0f; }  // 新增：得分倍率
     Color GetColor() { return color; }
+    // 新增：SetColor 方法声明（核心修复点）
+    void SetColor(Color newColor);
 };
 
 #endif

@@ -9,7 +9,10 @@
 Game::Game()
     : paddle(0,0,0,0),
     currentState(Game::STATE_MENU),
-    audioLoaded(false)
+    audioLoaded(false),
+    // 新增：初始化异步加载纹理
+    m_largeTexture({0}),
+    m_tempImage({0})
 {
     LoadConfig("config.json");
 
@@ -162,6 +165,19 @@ void Game::ResetGame() {
     balls.clear();
     balls.emplace_back(Vector2{ cfgBall.startX, cfgBall.startY }, Vector2{ 0,0 }, cfgBall.radius);
     balls[0].ResetToPaddle(paddle.GetRect().x + paddle.GetRect().width / 2, paddle.GetRect().y);
+
+    // 新增：重置异步加载状态
+    std::lock_guard<std::mutex> lock(m_loadMutex);
+    m_loadState = LoadState::IDLE;
+    m_loadingSuccess = false;
+    if (m_largeTexture.id != 0) {
+        UnloadTexture(m_largeTexture);
+        m_largeTexture = {0};
+    }
+    if (m_tempImage.data != nullptr) {
+        UnloadImage(m_tempImage);
+        m_tempImage = {0};
+    }
 }
 
 void Game::SpawnPowerUp(Vector2 pos) {
@@ -224,6 +240,33 @@ void Game::CleanupExpiredPowerUps() {
     }
 }
 
+// 新增：异步加载大纹理的核心函数
+void Game::LoadLargeTextureAsync() {
+    // 加锁修改状态，防止数据竞争
+    std::lock_guard<std::mutex> lock(m_loadMutex);
+    if (m_loadState != LoadState::IDLE) return;
+
+    m_loadState = LoadState::LOADING;
+    m_loadingSuccess = false;
+
+    // 用 async 启动后台线程，模拟耗时加载（sleep 代替实际纹理加载）
+    m_loadFuture = std::async(std::launch::async, [this]() {
+        // 模拟加载耗时（2秒），真实场景可替换为加载大图片/资源
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+
+        // 加分项：真实图片加载（后台线程加载Image，主线程转Texture2D）
+        // 注意：需要在项目根目录放一张名为 large_texture.png 的图片
+        if (FileExists("large_texture.png")) {
+            m_tempImage = LoadImage("large_texture.png");
+        }
+
+        // 加载完成后，修改状态（加锁保护共享变量）
+        std::lock_guard<std::mutex> lock(m_loadMutex);
+        m_loadState = LoadState::DONE;
+        m_loadingSuccess = true;
+    });
+}
+
 void Game::Update() {
     if ((currentState == STATE_VICTORY || currentState == STATE_GAME_OVER) && IsKeyPressed(KEY_R)) {
         ResetGame();
@@ -237,6 +280,43 @@ void Game::Update() {
         powerUps.clear();
         paddle.SetWidth(cfgPaddle.width);
         TraceLog(LOG_INFO, "DEBUG: 所有道具已清除");
+    }
+
+    // ==============================================
+    // 新增：异步加载逻辑（按下L键触发）
+    // ==============================================
+    if (currentState == STATE_PLAYING && IsKeyPressed(KEY_L)) {
+        LoadLargeTextureAsync();
+        TraceLog(LOG_INFO, "开始异步加载大纹理...");
+    }
+
+    // 新增：非阻塞检查异步加载状态
+    {
+        std::lock_guard<std::mutex> lock(m_loadMutex);
+        if (m_loadState == LoadState::LOADING) {
+            // 检查future是否完成（非阻塞）
+            auto status = m_loadFuture.wait_for(std::chrono::seconds(0));
+            if (status == std::future_status::ready) {
+                m_loadFuture.get(); // 清理线程资源，必须调用
+            }
+        }
+
+        // 加载完成后处理：主线程转Texture2D + 修改砖块颜色
+        if (m_loadState == LoadState::DONE && m_loadingSuccess) {
+            // 加分项：将后台加载的Image转为Texture2D（必须在主线程）
+            if (m_tempImage.data != nullptr && m_largeTexture.id == 0) {
+                m_largeTexture = LoadTextureFromImage(m_tempImage);
+                UnloadImage(m_tempImage);
+                m_tempImage = {0};
+                TraceLog(LOG_INFO, "大纹理加载完成！");
+            }
+
+            // 视觉反馈：所有砖块变为绿色，标记加载完成
+            for (auto& brick : bricks) {
+                if (brick.IsActive()) brick.SetColor(GREEN);
+            }
+            m_loadingSuccess = false; // 避免重复修改
+        }
     }
 
     // ==============================================
@@ -444,6 +524,20 @@ void Game::Draw() {
     DrawTextEx(font, TextFormat("时间: %.1f", gameTime), {20, 40}, 20, 1, LIGHTGRAY);
     DrawTextEx(font, TextFormat("球数量: %d", (int)balls.size()), {20, 70}, 20, 1, SKYBLUE);
 
+    // 新增：绘制加载中提示
+    {
+        std::lock_guard<std::mutex> lock(m_loadMutex);
+        if (m_loadState == LoadState::LOADING) {
+            DrawRectangle(0, 0, cfgWindow.width, cfgWindow.height, Fade(BLACK, 0.5f));
+            DrawTextEx(font, "加载中...", {(float)(cfgWindow.width/2 - 60), (float)(cfgWindow.height/2)}, 32, 1, YELLOW);
+        }
+
+        // 加分项：绘制加载完成的大纹理（右上角）
+        if (m_largeTexture.id != 0) {
+            DrawTexture(m_largeTexture, cfgWindow.width - m_largeTexture.width - 20, 20, WHITE);
+        }
+    }
+
     switch (currentState) {
     case Game::STATE_READY:
         DrawTextEx(font, "按空格发射", {350, 55}, 20, 1, YELLOW);
@@ -477,4 +571,12 @@ void Game::Shutdown() {
     UnloadSound(sndPowerUp);
     UnloadSound(sndVictory);
     CloseAudioDevice();
+
+    // 新增：释放异步加载的纹理
+    if (m_largeTexture.id != 0) {
+        UnloadTexture(m_largeTexture);
+    }
+    if (m_tempImage.data != nullptr) {
+        UnloadImage(m_tempImage);
+    }
 }
