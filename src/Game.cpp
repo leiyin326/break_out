@@ -26,8 +26,8 @@ Game::Game()
         font = GetFontDefault();
     }
 
-    brickParticles = std::make_unique<ParticleSystem>(150);
-    powerUpAura = std::make_unique<ParticleSystem>(80);
+    brickParticles = std::make_unique<ParticlePool>(150);
+    powerUpAura = std::make_unique<ParticlePool>(80);
     SetRandomSeed((unsigned int)time(nullptr));
 
     paddle = Paddle(cfgPaddle.startX, cfgPaddle.startY, cfgPaddle.width, cfgPaddle.height);
@@ -561,7 +561,7 @@ void Game::Draw() {
         break;
     default: break;
     }
-
+    DrawTextEx(font, TextFormat("FPS: %d", GetFPS()), {10, 100}, 20, 1, WHITE);
     EndDrawing();
 }
 

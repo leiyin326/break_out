@@ -16,6 +16,7 @@
 #include <mutex>
 #include <future>
 #include <chrono>
+#include "ParticlePool.h"
 
 using json = nlohmann::json;
 
@@ -52,8 +53,8 @@ private:
     GameState currentState;
 
     std::vector<std::unique_ptr<PowerUpEffect>> powerUps;
-    std::unique_ptr<ParticleSystem> brickParticles;
-    std::unique_ptr<ParticleSystem> powerUpAura;
+    std::unique_ptr<ParticlePool> brickParticles;    // 替换 ParticleSystem → ParticlePool
+    std::unique_ptr<ParticlePool> powerUpAura;       // 替换 ParticleSystem → ParticlePool
     bool audioLoaded;
 
     PowerUpConfig powerUpCfg;
