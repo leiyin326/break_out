@@ -6,6 +6,168 @@
 #include <algorithm>
 #include <cmath>
 
+// 辅助函数：字符串转Color（适配JSON中的颜色配置）
+Color Game::StringToColor(const std::string& colorStr) {
+    if (colorStr == "RED") return RED;
+    if (colorStr == "ORANGE") return ORANGE;
+    if (colorStr == "YELLOW") return YELLOW;
+    if (colorStr == "GREEN") return GREEN;
+    if (colorStr == "BLUE") return BLUE;
+    if (colorStr == "PURPLE") return PURPLE;
+    if (colorStr == "GOLD") return GOLD;
+    return WHITE; // 默认颜色
+}
+
+// 加载单个关卡配置（从JSON文件）
+bool Game::LoadLevelFromJSON(const std::string& path) {
+    if (!FileExists(path.c_str())) {
+        TraceLog(LOG_ERROR, "关卡文件 %s 不存在！", path.c_str());
+        return false;
+    }
+
+    std::ifstream f(path);
+    if (!f.is_open()) {
+        TraceLog(LOG_ERROR, "无法打开关卡文件 %s", path.c_str());
+        return false;
+    }
+
+    try {
+        json j;
+        f >> j;
+
+        LevelConfig cfg;
+        cfg.name = j["name"];
+        cfg.rows = j["rows"];
+        cfg.cols = j["cols"];
+        cfg.width = j["width"];
+        cfg.height = j["height"];
+        cfg.startX = j["start_x"];
+        cfg.startY = j["start_y"];
+        cfg.spacingX = j["spacing_x"];
+        cfg.spacingY = j["spacing_y"];
+
+        // 解析颜色列表
+        for (auto& c : j["colors"]) {
+            cfg.colors.push_back(StringToColor(c));
+        }
+
+        levels.push_back(cfg);
+        TraceLog(LOG_INFO, "成功加载关卡：%s", cfg.name.c_str());
+        return true;
+    } catch (json::parse_error& e) {
+        TraceLog(LOG_ERROR, "关卡文件 %s 格式错误：%s", path.c_str(), e.what());
+        return false;
+    } catch (...) {
+        TraceLog(LOG_ERROR, "关卡文件 %s 解析失败！", path.c_str());
+        return false;
+    }
+}
+
+// 加载所有关卡（按level1-level4的顺序）
+void Game::LoadAllLevels() {
+    levels.clear();
+    LoadLevelFromJSON("levels/level1.json");
+    LoadLevelFromJSON("levels/level2.json");
+    LoadLevelFromJSON("levels/level3.json");
+    LoadLevelFromJSON("levels/level4.json");
+
+    // 兜底：如果关卡加载失败，使用默认配置
+    if (levels.empty()) {
+        TraceLog(LOG_WARNING, "未加载到任何关卡，使用默认配置！");
+        LevelConfig defaultCfg;
+        defaultCfg.name = "默认关卡";
+        defaultCfg.rows = 5;
+        defaultCfg.cols = 8;
+        defaultCfg.width = 85.0f;
+        defaultCfg.height = 25.0f;
+        defaultCfg.startX = 50.0f;
+        defaultCfg.startY = 80.0f;
+        defaultCfg.spacingX = 95.0f;
+        defaultCfg.spacingY = 35.0f;
+        defaultCfg.colors = {RED, ORANGE, YELLOW, GREEN, BLUE};
+        levels.push_back(defaultCfg);
+    }
+}
+
+// 保存游戏存档
+bool Game::SaveGame() {
+    try {
+        SaveData data;
+        data.score = score;
+        data.lives = lives;
+        data.currentLevelIndex = currentLevelIndex;
+        data.gameTime = gameTime;
+        data.version = 1;
+        data.maxUnlockedLevel = maxUnlockedLevel;
+
+        // 保存砖块状态
+        for (auto& brick : bricks) {
+            data.brickStates.push_back(brick.IsActive());
+        }
+
+        json j;
+        j["version"] = data.version;
+        j["score"] = data.score;
+        j["lives"] = data.lives;
+        j["current_level"] = data.currentLevelIndex;
+        j["game_time"] = data.gameTime;
+        j["max_unlocked_level"] = data.maxUnlockedLevel;
+        j["brick_states"] = data.brickStates;
+
+        std::ofstream f(saveFilePath);
+        f << j.dump(4);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+// 加载游戏存档【修正版：只重置小球和生命，保留其他】
+bool Game::LoadGame() {
+    if (!FileExists(saveFilePath.c_str()))
+        return false;
+
+    try {
+        std::ifstream f(saveFilePath);
+        json j;
+        f >> j;
+
+        // 1. 恢复基础数据 (分数、时间、解锁进度保留)
+        score = j["score"];
+        gameTime = j["game_time"];
+        maxUnlockedLevel = j["max_unlocked_level"];
+        currentLevelIndex = j["current_level"];
+
+        // 2. 重置生命 (按你的要求：生命重置)
+        lives = cfgGame.initialLives;
+
+        // 3. 恢复砖块状态
+        // 先根据当前关卡索引创建砖块结构
+        CreateBricks();
+
+        // 再用存档数据覆盖砖块状态
+        if (j.contains("brick_states")) {
+            std::vector<bool> brickStates = j["brick_states"];
+            winCount = 0;
+            for (int i = 0; i < bricks.size() && i < brickStates.size(); i++) {
+                bricks[i].SetActive(brickStates[i]);
+                if (brickStates[i]) winCount++;
+            }
+        }
+
+        // 4. 重置小球 (位置重置，速度归零)
+        balls.clear();
+        balls.emplace_back(Vector2{ cfgBall.startX, cfgBall.startY }, Vector2{ 0,0 }, cfgBall.radius);
+        balls[0].ResetToPaddle(paddle.GetRect().x + paddle.GetRect().width / 2, paddle.GetRect().y);
+
+        // 5. 清理道具
+        powerUps.clear();
+        paddle.SetWidth(cfgPaddle.width);
+
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
 Game::Game()
     : paddle(0,0,0,0),
     currentState(Game::STATE_MENU),
@@ -15,7 +177,8 @@ Game::Game()
     m_tempImage({0})
 {
     LoadConfig("config.json");
-
+    // 加载所有关卡（核心修改）
+    LoadAllLevels();
     std::vector<int> codepoints;
     for (int i = 0x4E00; i <= 0x9FFF; ++i) codepoints.push_back(i);
     for (int i = 0x0020; i <= 0x007E; ++i) codepoints.push_back(i);
@@ -40,7 +203,6 @@ void Game::LoadConfig(const std::string& path) {
         cfgWindow = { 800,600,5, {30,30,40,255}, 50, 50 };
         cfgBall = { 10, 400,530 };
         cfgPaddle = { 120,15, 340,550, 18,28, 240 };
-        cfgBricks = {5,8, 85,25, 50,80,95,35};
         cfgGame = {3,10,5.0f,0.05f,1.0f};
         powerUpCfg = {0.25f, 8.0f, 120.0f, 16.0f, 150};
         return;
@@ -73,15 +235,6 @@ void Game::LoadConfig(const std::string& path) {
     cfgPaddle.speedBoost = j["paddle"]["speed_boost"];
     cfgPaddle.maxWidth = j["paddle"]["max_width"];
 
-    cfgBricks.rows = j["bricks"]["rows"];
-    cfgBricks.cols = j["bricks"]["cols"];
-    cfgBricks.width = j["bricks"]["width"];
-    cfgBricks.height = j["bricks"]["height"];
-    cfgBricks.startX = j["bricks"]["start_x"];
-    cfgBricks.startY = j["bricks"]["start_y"];
-    cfgBricks.spacingX = j["bricks"]["spacing_x"];
-    cfgBricks.spacingY = j["bricks"]["spacing_y"];
-
     cfgGame.initialLives = j["game"]["initial_lives"];
     cfgGame.baseScorePerBrick = j["game"]["base_score_per_brick"];
     cfgGame.timeMultBase = j["game"]["time_multiplier_base"];
@@ -111,19 +264,23 @@ void Game::Init() {
     sndPowerUp = LoadSound("sounds/powerup.wav");
     sndVictory = LoadSound("sounds/victory.wav");
 }
-
 void Game::CreateBricks() {
     bricks.clear();
-    Color cs[] = { RED,ORANGE,YELLOW,GREEN,BLUE };
+    // 取当前关卡的配置
+    LevelConfig& cfg = levels[currentLevelIndex];
 
-    for (int r = 0; r < cfgBricks.rows; r++) {
-        for (int c = 0; c < cfgBricks.cols; c++) {
+    // 使用关卡专属颜色
+    std::vector<Color> cs = cfg.colors.empty() ? 
+        std::vector<Color>{RED,ORANGE,YELLOW,GREEN,BLUE} : cfg.colors;
+
+    for (int r = 0; r < cfg.rows; r++) {
+        for (int c = 0; c < cfg.cols; c++) {
             bricks.emplace_back(
-                cfgBricks.startX + c * cfgBricks.spacingX,
-                cfgBricks.startY + r * cfgBricks.spacingY,
-                cfgBricks.width,
-                cfgBricks.height,
-                cs[r],
+                cfg.startX + c * cfg.spacingX,
+                cfg.startY + r * cfg.spacingY,
+                cfg.width,
+                cfg.height,
+                cs[r % cs.size()],
                 false
             );
         }
@@ -150,10 +307,8 @@ void Game::CreateBricks() {
 
     winCount = bricks.size();
 }
-
 void Game::ResetGame() {
-    score = 0;
-    lives = cfgGame.initialLives;
+    lives = 3;
     gameTime = 0;
     currentState = STATE_READY;
     powerUps.clear();
@@ -166,7 +321,7 @@ void Game::ResetGame() {
     balls.emplace_back(Vector2{ cfgBall.startX, cfgBall.startY }, Vector2{ 0,0 }, cfgBall.radius);
     balls[0].ResetToPaddle(paddle.GetRect().x + paddle.GetRect().width / 2, paddle.GetRect().y);
 
-    // 新增：重置异步加载状态
+    // 重置异步加载状态
     std::lock_guard<std::mutex> lock(m_loadMutex);
     m_loadState = LoadState::IDLE;
     m_loadingSuccess = false;
@@ -210,22 +365,31 @@ void Game::CheckPowerUpCollisions() {
                 lives++;
             }
 
-            // 👇 多球道具：生成2个限时8秒的球
+            //多球道具
             if (pu->GetType() == PowerUpType::MULTI_BALL) {
                 if (balls.empty()) return;
                 Ball& main = balls[0];
+                
+                float speed = sqrtf(main.GetSpeed().x * main.GetSpeed().x + main.GetSpeed().y * main.GetSpeed().y);
+                
                 for (int i = 0; i < 2; i++) {
                     Ball b = main;
-                    b.SetSpeed(Vector2{
-                        main.GetSpeed().x + GetRandomValue(-70,70),
-                        main.GetSpeed().y + GetRandomValue(-40,-60)
-                    });
+                    
+                    float baseAngle = atan2f(main.GetSpeed().y, main.GetSpeed().x);
+                    float randomAngle = baseAngle + GetRandomValue(-30, 30) * DEG2RAD;
+                    
+                    Vector2 newSpeed = {
+                        cosf(randomAngle) * speed,
+                        sinf(randomAngle) * speed
+                    };
+                    
+                    b.SetSpeed(newSpeed);
                     b.SetLifeTime(8.0f);
                     balls.push_back(b);
                 }
             }
-        }
-    }
+        } 
+    } 
 }
 
 void Game::CleanupExpiredPowerUps() {
@@ -240,27 +404,19 @@ void Game::CleanupExpiredPowerUps() {
     }
 }
 
-// 新增：异步加载大纹理的核心函数
+// 异步加载大纹理
 void Game::LoadLargeTextureAsync() {
-    // 加锁修改状态，防止数据竞争
     std::lock_guard<std::mutex> lock(m_loadMutex);
     if (m_loadState != LoadState::IDLE) return;
 
     m_loadState = LoadState::LOADING;
     m_loadingSuccess = false;
 
-    // 用 async 启动后台线程，模拟耗时加载（sleep 代替实际纹理加载）
     m_loadFuture = std::async(std::launch::async, [this]() {
-        // 模拟加载耗时（2秒），真实场景可替换为加载大图片/资源
         std::this_thread::sleep_for(std::chrono::seconds(2));
-
-        // 加分项：真实图片加载（后台线程加载Image，主线程转Texture2D）
-        // 注意：需要在项目根目录放一张名为 large_texture.png 的图片
         if (FileExists("large_texture.png")) {
             m_tempImage = LoadImage("large_texture.png");
         }
-
-        // 加载完成后，修改状态（加锁保护共享变量）
         std::lock_guard<std::mutex> lock(m_loadMutex);
         m_loadState = LoadState::DONE;
         m_loadingSuccess = true;
@@ -268,78 +424,96 @@ void Game::LoadLargeTextureAsync() {
 }
 
 void Game::Update() {
+    float dt = GetFrameTime();
+    promptTimer += dt;
+    
+    // 弹窗交互逻辑【最终正确版】
+    if (promptState != SavePromptState::NONE && promptTimer > 0.5f)
+    {
+        if (promptState == SavePromptState::LOAD_PROMPT)
+        {
+            if (IsKeyPressed(KEY_Y))
+            {
+                LoadGame();
+                currentState = STATE_READY;
+                promptState = SavePromptState::NONE;
+            }
+            if (IsKeyPressed(KEY_N))
+            {
+                ResetGame();
+                currentState = STATE_LEVEL_SELECT;
+                promptState = SavePromptState::NONE;
+            }
+        }
+
+        if (promptState == SavePromptState::SAVE_PROMPT)
+        {
+            if (IsKeyPressed(KEY_Y))
+            {
+                SaveGame();
+                promptState = SavePromptState::NONE;
+                if (currentState == STATE_MENU) CloseWindow();
+                else currentState = STATE_MENU;
+            }
+            if (IsKeyPressed(KEY_N))
+            {
+                promptState = SavePromptState::NONE;
+                if (currentState == STATE_MENU) CloseWindow();
+                else currentState = STATE_MENU;
+            }
+        }
+    }
+
     if ((currentState == STATE_VICTORY || currentState == STATE_GAME_OVER) && IsKeyPressed(KEY_R)) {
         ResetGame();
         currentState = STATE_MENU;
         return;
     }
 
-    float dt = GetFrameTime();
-
     if (currentState == STATE_PLAYING && IsKeyPressed(KEY_K)) {
         powerUps.clear();
         paddle.SetWidth(cfgPaddle.width);
-        TraceLog(LOG_INFO, "DEBUG: 所有道具已清除");
     }
 
-    // ==============================================
-    // 新增：异步加载逻辑（按下L键触发）
-    // ==============================================
     if (currentState == STATE_PLAYING && IsKeyPressed(KEY_L)) {
         LoadLargeTextureAsync();
-        TraceLog(LOG_INFO, "开始异步加载大纹理...");
     }
 
-    // 新增：非阻塞检查异步加载状态
     {
         std::lock_guard<std::mutex> lock(m_loadMutex);
         if (m_loadState == LoadState::LOADING) {
-            // 检查future是否完成（非阻塞）
             auto status = m_loadFuture.wait_for(std::chrono::seconds(0));
             if (status == std::future_status::ready) {
-                m_loadFuture.get(); // 清理线程资源，必须调用
+                m_loadFuture.get();
             }
         }
-
-        // 加载完成后处理：主线程转Texture2D + 修改砖块颜色
         if (m_loadState == LoadState::DONE && m_loadingSuccess) {
-            // 加分项：将后台加载的Image转为Texture2D（必须在主线程）
             if (m_tempImage.data != nullptr && m_largeTexture.id == 0) {
                 m_largeTexture = LoadTextureFromImage(m_tempImage);
                 UnloadImage(m_tempImage);
                 m_tempImage = {0};
-                TraceLog(LOG_INFO, "大纹理加载完成！");
             }
-
-            // 视觉反馈：所有砖块变为绿色，标记加载完成
             for (auto& brick : bricks) {
                 if (brick.IsActive()) brick.SetColor(GREEN);
             }
-            m_loadingSuccess = false; // 避免重复修改
+            m_loadingSuccess = false;
         }
     }
 
-    // ==============================================
-    // 多球更新：倒计时 + 自动删除过期球
-    // ==============================================
+    // 多球计时清理
     for (auto& ball : balls) {
         if (ball.GetLifeTime() > 0) {
             ball.SetLifeTime(ball.GetLifeTime() - dt);
         }
     }
-
     auto it = balls.begin();
     while (it != balls.end()) {
         if (it->GetLifeTime() <= 0 && it->GetLifeTime() != -1) {
             it = balls.erase(it);
-        } else {
-            ++it;
-        }
+        } else ++it;
     }
 
-    // ==============================================
-    // 球与球碰撞物理
-    // ==============================================
+    // 球球碰撞
     for (int i = 0; i < (int)balls.size(); i++) {
         for (int j = i+1; j < (int)balls.size(); j++) {
             Ball& a = balls[i];
@@ -353,17 +527,58 @@ void Game::Update() {
         }
     }
 
-    switch (currentState) {
+    switch (currentState)
+    {
     case Game::STATE_MENU:
-        if (IsKeyPressed(KEY_ENTER)) currentState = Game::STATE_LEVEL_SELECT;
-        if (IsKeyPressed(KEY_ESCAPE)) CloseWindow();
+        if (IsKeyPressed(KEY_ENTER))
+        {
+            if (FileExists(saveFilePath.c_str()))
+            {
+                promptState = SavePromptState::LOAD_PROMPT;
+                promptTimer = 0.0f;
+            }
+            else
+            {
+                ResetGame();
+                currentState = STATE_LEVEL_SELECT;
+            }
+        }
+        if (IsKeyPressed(KEY_R))
+        {
+            ResetAllProgress();
+        }
+        if (IsKeyPressed(KEY_ESCAPE) && promptState == SavePromptState::NONE)
+        {
+            promptState = SavePromptState::SAVE_PROMPT;
+            promptTimer = 0.0f;
+        }
         break;
 
     case Game::STATE_LEVEL_SELECT:
-        if (IsKeyPressed(KEY_ONE)) { cfgBricks.rows=3; cfgBricks.cols=6; ResetGame(); currentState=STATE_READY; }
-        if (IsKeyPressed(KEY_TWO)) { cfgBricks.rows=4; cfgBricks.cols=7; ResetGame(); currentState=STATE_READY; }
-        if (IsKeyPressed(KEY_THREE)) { cfgBricks.rows=5; cfgBricks.cols=8; ResetGame(); currentState=STATE_READY; }
-        if (IsKeyPressed(KEY_FOUR)) { cfgBricks.rows=6; cfgBricks.cols=9; ResetGame(); currentState=STATE_READY; }
+        if (IsKeyPressed(KEY_ONE) && 0 <= maxUnlockedLevel)
+        { 
+            currentLevelIndex = 0; 
+            ResetGame(); 
+            currentState=STATE_READY; 
+        }
+        if (IsKeyPressed(KEY_TWO) && 1 <= maxUnlockedLevel)
+        { 
+            currentLevelIndex = 1; 
+            ResetGame(); 
+            currentState=STATE_READY; 
+        }
+        if (IsKeyPressed(KEY_THREE) && 2 <= maxUnlockedLevel)
+        { 
+            currentLevelIndex = 2; 
+            ResetGame(); 
+            currentState=STATE_READY; 
+        }
+        if (IsKeyPressed(KEY_FOUR) && 3 <= maxUnlockedLevel)
+        { 
+            currentLevelIndex = 3; 
+            ResetGame(); 
+            currentState=STATE_READY; 
+        }
         if (IsKeyPressed(KEY_ESCAPE)) currentState = STATE_MENU;
         break;
 
@@ -389,7 +604,6 @@ void Game::Update() {
         if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) paddle.MoveLeft(sp);
         if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) paddle.MoveRight(sp);
 
-        // 更新所有球
         for (auto& ball : balls) {
             ball.ApplyGravity();
             ball.Move();
@@ -397,7 +611,6 @@ void Game::Update() {
             ball.BouncePaddle(paddle.GetRect());
         }
 
-        // 所有球碰撞砖块
         for (auto& ball : balls) {
             bool hitProcessed = false;
             for (auto& b : bricks) {
@@ -429,49 +642,65 @@ void Game::Update() {
         }
         powerUpAura->Update(dt, cfgWindow.width, cfgWindow.height);
 
-        if (winCount <= 0) {
-            currentState = STATE_VICTORY;
-            StopSound(sndVictory);
-            PlaySound(sndVictory);
+        if (winCount <= 0){
+            if(currentLevelIndex >= maxUnlockedLevel)
+            {
+                maxUnlockedLevel = currentLevelIndex + 1;
+            }
+            if (currentLevelIndex + 1 < (int)levels.size())
+            {
+                currentLevelIndex++;
+                ResetGame();
+                currentState = STATE_READY;
+                PlaySound(sndVictory);
+            }
+            else
+            {
+                currentState = STATE_VICTORY;
+                StopSound(sndVictory);
+                PlaySound(sndVictory);
+            }
             break;
         }
 
-        // ==============================================
-        // 生命规则：所有球都掉下去才减命
-        // ==============================================
         int aliveBalls = 0;
         for (auto& ball : balls) {
             if (ball.GetPosition().y < cfgWindow.height + cfgWindow.fallOffset) {
                 aliveBalls++;
             }
         }
-
         if (aliveBalls == 0) {
             lives--;
             score -= cfgWindow.scorePenalty;
             if (score < 0) score = 0;
             paddle.SetWidth(cfgPaddle.width);
             powerUps.clear();
-
             if (lives <= 0) {
                 currentState = STATE_GAME_OVER;
             } else {
                 balls.clear();
                 balls.emplace_back(Vector2{ cfgBall.startX, cfgBall.startY }, Vector2{ 0,0 }, cfgBall.radius);
-                balls[0].ResetToPaddle(paddle.GetRect().x + paddle.GetRect().width/2, paddle.GetRect().y);
+                balls[0].ResetToPaddle(paddle.GetRect().x + paddle.GetRect().width / 2, paddle.GetRect().y);
                 currentState = STATE_READY;
             }
         }
-
         break;
     }
 
     case Game::STATE_PAUSED:
         if (IsKeyPressed(KEY_P)) currentState = STATE_PLAYING;
+        if (IsKeyPressed(KEY_S) && promptState == SavePromptState::NONE) {
+            promptState = SavePromptState::SAVE_PROMPT;
+            promptTimer = 0.0f;
+        }
         break;
 
     case Game::STATE_VICTORY:
     case Game::STATE_GAME_OVER:
+        if (IsKeyPressed(KEY_S) && promptState == SavePromptState::NONE) {
+            promptState = SavePromptState::SAVE_PROMPT;
+            promptTimer = 0.0f;
+        }
         break;
     }
 }
@@ -480,103 +709,144 @@ void Game::Draw() {
     BeginDrawing();
     ClearBackground(cfgWindow.bg);
 
-    if (currentState == STATE_MENU) {
+    // ================== 1. 绘制主界面逻辑 ==================
+    if (currentState == STATE_MENU)
+    {
         DrawTextEx(font, "打砖块", {(float)(cfgWindow.width/2 - 120), 150}, 64, 2, YELLOW);
         DrawTextEx(font, "按 ENTER 开始游戏", {(float)(cfgWindow.width/2 - 150), 300}, 32, 1, WHITE);
         DrawTextEx(font, "按 ESC 退出游戏", {(float)(cfgWindow.width/2 - 130), 350}, 24, 1, LIGHTGRAY);
-        EndDrawing();
-        return;
+        DrawTextEx(font, "按 R 重置所有进度", {(float)(cfgWindow.width/2 - 130), 400}, 24, 1, LIGHTGRAY);
     }
-
-    if (currentState == STATE_LEVEL_SELECT) {
-        DrawTextEx(font, "选择关卡", {(float)(cfgWindow.width/2 - 80), 150}, 48, 2, YELLOW);
-        DrawTextEx(font, "1 - 简单 (3行)", {(float)(cfgWindow.width/2 - 100), 250}, 32, 1, GREEN);
-        DrawTextEx(font, "2 - 普通 (4行)", {(float)(cfgWindow.width/2 - 100), 300}, 32, 1, ORANGE);
-        DrawTextEx(font, "3 - 困难 (5行)", {(float)(cfgWindow.width/2 - 100), 350}, 32, 1, RED);
-        DrawTextEx(font, "4 - 极难 (6行)", {(float)(cfgWindow.width/2 - 100), 400}, 32, 1, MAROON);
+    else if (currentState == STATE_LEVEL_SELECT)
+    {
+        DrawTextEx(font, "1 - 简单 (3行)", {(float)(cfgWindow.width/2 - 100), 250}, 32, 1, 0<=maxUnlockedLevel ? GREEN : DARKGRAY);
+        DrawTextEx(font, "2 - 普通 (4行)", {(float)(cfgWindow.width/2 - 100), 300}, 32, 1, 1<=maxUnlockedLevel ? ORANGE : DARKGRAY);
+        DrawTextEx(font, "3 - 困难 (5行)", {(float)(cfgWindow.width/2 - 100), 350}, 32, 1, 2<=maxUnlockedLevel ? RED : DARKGRAY);
+        DrawTextEx(font, "4 - 极难 (6行)", {(float)(cfgWindow.width/2 - 100), 400}, 32, 1, 3<=maxUnlockedLevel ? MAROON : DARKGRAY);
         DrawTextEx(font, "按 ESC 返回主菜单", {(float)(cfgWindow.width/2 - 120), 500}, 24, 1, LIGHTGRAY);
-        EndDrawing();
-        return;
+    }
+    else
+    {
+        // ================== 2. 绘制游戏场景 (砖块、球等) ==================
+        // 只有非菜单/选关状态下才绘制游戏元素
+        DrawRectangle(0, 0, cfgWindow.border, cfgWindow.height, GRAY);
+        DrawRectangle(cfgWindow.width - cfgWindow.border, 0, cfgWindow.border, cfgWindow.height, GRAY);
+        DrawRectangle(0, 0, cfgWindow.width, cfgWindow.border, GRAY);
+
+        brickParticles->Draw();
+        powerUpAura->Draw();
+
+        for (auto& b : bricks) b.Draw();
+        paddle.Draw();
+        for (auto& ball : balls) ball.Draw();
+        for (auto& pu : powerUps)
+        {
+            pu->Draw();
+            DrawRectangleLinesEx(pu->GetRect(), 1, MAGENTA);
+        }
+
+        // UI信息
+        DrawTextEx(font, TextFormat("分数: %d", score), {20, 10}, 24, 1, YELLOW);
+        DrawTextEx(font, TextFormat("生命: %d", lives), {650, 10}, 24, 1, lives > 1 ? GREEN : RED);
+        DrawTextEx(font, TextFormat("时间: %.1f", gameTime), {20, 40}, 20, 1, LIGHTGRAY);
+        DrawTextEx(font, TextFormat("球数量: %d", (int)balls.size()), {20, 70}, 20, 1, SKYBLUE);
+
+        // 状态提示 (Ready, Paused, Victory, Game Over)
+        switch (currentState)
+        {
+        case Game::STATE_READY:
+            DrawTextEx(font, "按空格发射", {350, 55}, 20, 1, YELLOW);
+            break;
+        case Game::STATE_PAUSED:
+            DrawRectangle(0, 0, cfgWindow.width, cfgWindow.height, Fade(BLACK, 0.7f));
+            DrawTextEx(font, "暂停", {370, 280}, 48, 1, YELLOW);
+            DrawTextEx(font, "按P继续", {350, 330}, 24, 1, WHITE);
+            break;
+        case Game::STATE_VICTORY:
+            DrawRectangle(0, 0, cfgWindow.width, cfgWindow.height, Fade(BLACK, 0.85f));
+            DrawTextEx(font, "胜利!", {350, 220}, 48, 1, GREEN);
+            DrawTextEx(font, TextFormat("%d", score), {370, 280}, 28, 1, YELLOW);
+            DrawTextEx(font, "按R重来", {350, 330}, 24, 1, WHITE);
+            break;
+        case Game::STATE_GAME_OVER:
+            DrawRectangle(0,0,cfgWindow.width,cfgWindow.height,Fade(BLACK,0.85f));
+            DrawTextEx(font, "游戏结束", {320, 220}, 48, 1, RED);
+            DrawTextEx(font, TextFormat("%d", score), {370, 280}, 28, 1, YELLOW);
+            DrawTextEx(font, "按R重来", {350, 330}, 24, 1, WHITE);
+            break;
+        default: break;
+        }
+
+        // 调试信息
+        DrawTextEx(font, TextFormat("FPS: %d", GetFPS()), {10, 100}, 20, 1, WHITE);
     }
 
-    DrawRectangle(0, 0, cfgWindow.border, cfgWindow.height, GRAY);
-    DrawRectangle(cfgWindow.width - cfgWindow.border, 0, cfgWindow.border, cfgWindow.height, GRAY);
-    DrawRectangle(0, 0, cfgWindow.width, cfgWindow.border, GRAY);
-
-    brickParticles->Draw();
-    powerUpAura->Draw();
-
-    for (auto& b : bricks) b.Draw();
-    paddle.Draw();
-
-    // 绘制所有球
-    for (auto& ball : balls) {
-        ball.Draw();
-    }
-
-    for (auto& pu : powerUps) {
-        pu->Draw();
-        DrawRectangleLinesEx(pu->GetRect(), 1, MAGENTA);
-    }
-
-    DrawTextEx(font, TextFormat("分数: %d", score), {20, 10}, 24, 1, YELLOW);
-    DrawTextEx(font, TextFormat("生命: %d", lives), {650, 10}, 24, 1, lives > 1 ? GREEN : RED);
-    DrawTextEx(font, TextFormat("时间: %.1f", gameTime), {20, 40}, 20, 1, LIGHTGRAY);
-    DrawTextEx(font, TextFormat("球数量: %d", (int)balls.size()), {20, 70}, 20, 1, SKYBLUE);
-
-    // 新增：绘制加载中提示
+    // ================== 3. 绘制加载遮罩 (如果有) ==================
     {
         std::lock_guard<std::mutex> lock(m_loadMutex);
-        if (m_loadState == LoadState::LOADING) {
+        if (m_loadState == LoadState::LOADING)
+        {
             DrawRectangle(0, 0, cfgWindow.width, cfgWindow.height, Fade(BLACK, 0.5f));
             DrawTextEx(font, "加载中...", {(float)(cfgWindow.width/2 - 60), (float)(cfgWindow.height/2)}, 32, 1, YELLOW);
         }
-
-        // 加分项：绘制加载完成的大纹理（右上角）
-        if (m_largeTexture.id != 0) {
+        if (m_largeTexture.id != 0)
+        {
             DrawTexture(m_largeTexture, cfgWindow.width - m_largeTexture.width - 20, 20, WHITE);
         }
     }
 
-    switch (currentState) {
-    case Game::STATE_READY:
-        DrawTextEx(font, "按空格发射", {350, 55}, 20, 1, YELLOW);
-        break;
-    case Game::STATE_PAUSED:
-        DrawRectangle(0, 0, cfgWindow.width, cfgWindow.height, Fade(BLACK, 0.7f));
-        DrawTextEx(font, "暂停", {370, 280}, 48, 1, YELLOW);
-        DrawTextEx(font, "按P继续", {350, 330}, 24, 1, WHITE);
-        break;
-    case Game::STATE_VICTORY:
-        DrawRectangle(0, 0, cfgWindow.width, cfgWindow.height, Fade(BLACK, 0.85f));
-        DrawTextEx(font, "胜利!", {350, 220}, 48, 1, GREEN);
-        DrawTextEx(font, TextFormat("%d", score), {370, 280}, 28, 1, YELLOW);
-        DrawTextEx(font, "按R重来", {350, 330}, 24, 1, WHITE);
-        break;
-    case Game::STATE_GAME_OVER:
-        DrawRectangle(0,0,cfgWindow.width,cfgWindow.height,Fade(BLACK,0.85f));
-        DrawTextEx(font, "游戏结束", {320, 220}, 48, 1, RED);
-        DrawTextEx(font, TextFormat("%d", score), {370, 280}, 28, 1, YELLOW);
-        DrawTextEx(font, "按R重来", {350, 330}, 24, 1, WHITE);
-        break;
-    default: break;
+    // ================== 4. 【最后】绘制全局弹窗 ==================
+    // 放在 EndDrawing 之前，确保覆盖所有背景
+    if (promptState != SavePromptState::NONE)
+    {
+        int w = 500;
+        int h = 220;
+        int x = (cfgWindow.width - w) / 2;
+        int y = (cfgWindow.height - h) / 2;
+
+        // 弹窗背景 (BLACK 是不透明的，会挡住底下的东西)
+        DrawRectangle(x, y, w, h, BLACK);
+        DrawRectangleLines(x, y, w, h, LIGHTGRAY);
+
+        std::string title, desc;
+        if (promptState == SavePromptState::LOAD_PROMPT)
+        {
+            title = "检测到存档";
+            desc = "是否加载上次进度？ Y确认 / N新开";
+        }
+        else
+        {
+            title = "保存当前进度";
+            desc = "是否保存游戏进度？ Y保存 / N取消";
+        }
+
+        Vector2 ts = MeasureTextEx(font, title.c_str(), 42, 2);
+        DrawTextEx(font, title.c_str(), { (float)(cfgWindow.width/2 - ts.x/2), (float)y + 50 }, 42, 2, YELLOW);
+        Vector2 ds = MeasureTextEx(font, desc.c_str(), 28, 1);
+        DrawTextEx(font, desc.c_str(), { (float)(cfgWindow.width/2 - ds.x/2), (float)y + 120 }, 28, 1, WHITE);
     }
-    DrawTextEx(font, TextFormat("FPS: %d", GetFPS()), {10, 100}, 20, 1, WHITE);
+
     EndDrawing();
 }
-
 void Game::Shutdown() {
     UnloadFont(font);
     UnloadSound(sndBrick);
     UnloadSound(sndPowerUp);
     UnloadSound(sndVictory);
     CloseAudioDevice();
+    if (m_largeTexture.id != 0) UnloadTexture(m_largeTexture);
+    if (m_tempImage.data != nullptr) UnloadImage(m_tempImage);
+}
 
-    // 新增：释放异步加载的纹理
-    if (m_largeTexture.id != 0) {
-        UnloadTexture(m_largeTexture);
+void Game::ResetAllProgress() {
+    maxUnlockedLevel = 0;
+    score = 0;
+    lives = cfgGame.initialLives;
+    currentLevelIndex = 0;
+    gameTime = 0;
+    if (FileExists(saveFilePath.c_str())) {
+        std::remove(saveFilePath.c_str());
     }
-    if (m_tempImage.data != nullptr) {
-        UnloadImage(m_tempImage);
-    }
+    ResetGame();
+    currentState = STATE_LEVEL_SELECT;
 }

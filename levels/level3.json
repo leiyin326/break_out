@@ -1,0 +1,12 @@
+{
+    "name": "困难",
+    "rows": 5,
+    "cols": 8,
+    "width": 85.0,
+    "height": 25.0,
+    "start_x": 50.0,
+    "start_y": 80.0,
+    "spacing_x": 95.0,
+    "spacing_y": 35.0,
+    "colors": ["RED", "PURPLE", "BLUE", "ORANGE", "YELLOW"]
+}

@@ -39,6 +39,32 @@ public:
         DONE        // 加载完成
     };
 
+    // ====================== 新增：关卡配置结构体 ======================
+    struct LevelConfig {
+        std::string name;
+        int rows;
+        int cols;
+        float width;
+        float height;
+        float startX;
+        float startY;
+        float spacingX;
+        float spacingY;
+        std::vector<Color> colors; // 关卡专属砖块颜色
+    };
+
+    // ====================== 新增：存档数据结构体 ======================
+    struct SaveData {
+        int score;
+        int lives;
+        int currentLevelIndex;
+        float gameTime;
+        // 版本号：用于后续存档升级
+        int version = 1;
+        int maxUnlockedLevel; // 新增：最高解锁关卡
+        std::vector<bool> brickStates;
+    };
+
 private:
     Paddle paddle;
     std::vector<Brick> bricks;
@@ -51,6 +77,18 @@ private:
     float gameTime;
     int winCount;
     GameState currentState;
+    void ResetAllProgress();
+    // 关卡解锁进度
+    int maxUnlockedLevel = 0;
+    // ====================== 新增：存档提示弹窗相关 ======================
+    enum class SavePromptState {
+        NONE,           // 无弹窗
+        LOAD_PROMPT,    // 加载存档提示（启动时）
+        SAVE_PROMPT     // 保存存档提示（退出/通关时）
+    };
+
+    SavePromptState promptState = SavePromptState::NONE; // 当前弹窗状态
+    float promptTimer = 0.0f;                             // 弹窗显示计时（防止误触）
 
     std::vector<std::unique_ptr<PowerUpEffect>> powerUps;
     std::unique_ptr<ParticlePool> brickParticles;    // 替换 ParticleSystem → ParticlePool
@@ -85,17 +123,6 @@ private:
     } cfgPaddle;
 
     struct {
-        int rows;
-        int cols;
-        float width;
-        float height;
-        float startX;
-        float startY;
-        float spacingX;
-        float spacingY;
-    } cfgBricks;
-
-    struct {
         int initialLives;
         int baseScorePerBrick;
         float timeMultBase;
@@ -111,6 +138,11 @@ private:
     Texture2D m_largeTexture;     // 异步加载的大纹理（加分项）
     Image m_tempImage;            // 临时存储图片数据（加分项）
 
+    // ====================== 新增：关卡/存档相关成员 ======================
+    std::vector<LevelConfig> levels;       // 所有关卡配置
+    int currentLevelIndex = 0;            // 当前选中的关卡索引
+    std::string saveFilePath = "savegame.json"; // 存档文件路径
+
     void CreateBricks();
     void ResetGame();
     void SpawnPowerUp(Vector2 pos);
@@ -118,6 +150,13 @@ private:
     void CleanupExpiredPowerUps();
     // 新增：异步加载函数声明
     void LoadLargeTextureAsync();
+
+    // ====================== 新增：关卡/存档核心方法 ======================
+    bool LoadLevelFromJSON(const std::string& path); // 加载单个关卡配置
+    void LoadAllLevels();                            // 加载所有关卡
+    bool SaveGame();                                 // 保存游戏存档
+    bool LoadGame();                                 // 加载游戏存档
+    Color StringToColor(const std::string& colorStr); // 字符串转Color辅助函数
 
 public:
     Game();
