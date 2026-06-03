@@ -33,3 +33,8 @@ void Brick::Draw() {
         }
     }
 }
+
+void Brick::SetGold(bool g) {
+    isGolden = g;
+    if (g) color = GOLD;
+}

@@ -1,12 +1,16 @@
 {
     "name": "普通",
-    "rows": 4,
-    "cols": 7,
     "width": 85.0,
     "height": 25.0,
     "start_x": 50.0,
     "start_y": 80.0,
     "spacing_x": 95.0,
     "spacing_y": 35.0,
-    "colors": ["ORANGE", "YELLOW", "RED", "BLUE"]
+    "colors": ["ORANGE", "YELLOW", "RED", "BLUE"],
+    "shape": [
+        [1,0,0,0,0,0,1],
+        [1,1,0,0,0,1,1],
+        [1,1,1,1,1,1,1],
+        [0,1,1,1,1,1,0]
+    ]
 }

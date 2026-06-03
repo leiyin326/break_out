@@ -37,8 +37,6 @@ bool Game::LoadLevelFromJSON(const std::string& path) {
 
         LevelConfig cfg;
         cfg.name = j["name"];
-        cfg.rows = j["rows"];
-        cfg.cols = j["cols"];
         cfg.width = j["width"];
         cfg.height = j["height"];
         cfg.startX = j["start_x"];
@@ -46,10 +44,13 @@ bool Game::LoadLevelFromJSON(const std::string& path) {
         cfg.spacingX = j["spacing_x"];
         cfg.spacingY = j["spacing_y"];
 
-        // 解析颜色列表
+        // 解析颜色
         for (auto& c : j["colors"]) {
             cfg.colors.push_back(StringToColor(c));
         }
+
+        // 读取造型
+        cfg.shape = j["shape"].get<std::vector<std::vector<int>>>();
 
         levels.push_back(cfg);
         TraceLog(LOG_INFO, "成功加载关卡：%s", cfg.name.c_str());
@@ -72,21 +73,16 @@ void Game::LoadAllLevels() {
     LoadLevelFromJSON("levels/level4.json");
 
     // 兜底：如果关卡加载失败，使用默认配置
-    if (levels.empty()) {
-        TraceLog(LOG_WARNING, "未加载到任何关卡，使用默认配置！");
-        LevelConfig defaultCfg;
-        defaultCfg.name = "默认关卡";
-        defaultCfg.rows = 5;
-        defaultCfg.cols = 8;
-        defaultCfg.width = 85.0f;
-        defaultCfg.height = 25.0f;
-        defaultCfg.startX = 50.0f;
-        defaultCfg.startY = 80.0f;
-        defaultCfg.spacingX = 95.0f;
-        defaultCfg.spacingY = 35.0f;
-        defaultCfg.colors = {RED, ORANGE, YELLOW, GREEN, BLUE};
-        levels.push_back(defaultCfg);
-    }
+    LevelConfig defaultCfg;
+    defaultCfg.name = "默认关卡";
+    defaultCfg.width = 85.0f;
+    defaultCfg.height = 25.0f;
+    defaultCfg.startX = 50.0f;
+    defaultCfg.startY = 80.0f;
+    defaultCfg.spacingX = 95.0f;
+    defaultCfg.spacingY = 35.0f;
+    defaultCfg.colors = {RED, ORANGE, YELLOW, GREEN, BLUE};
+    defaultCfg.shape = {{1,1,1,1,1,1,1,1}}; // 加这行
 }
 
 // 保存游戏存档
@@ -266,47 +262,32 @@ void Game::Init() {
 }
 void Game::CreateBricks() {
     bricks.clear();
-    // 取当前关卡的配置
-    LevelConfig& cfg = levels[currentLevelIndex];
+    if (currentLevelIndex >= levels.size()) return;
+    auto& cfg = levels[currentLevelIndex];
 
-    // 使用关卡专属颜色
-    std::vector<Color> cs = cfg.colors.empty() ? 
-        std::vector<Color>{RED,ORANGE,YELLOW,GREEN,BLUE} : cfg.colors;
-
-    for (int r = 0; r < cfg.rows; r++) {
-        for (int c = 0; c < cfg.cols; c++) {
-            bricks.emplace_back(
-                cfg.startX + c * cfg.spacingX,
-                cfg.startY + r * cfg.spacingY,
-                cfg.width,
-                cfg.height,
-                cs[r % cs.size()],
-                false
-            );
+    for (int r = 0; r < cfg.shape.size(); r++) {
+        for (int c = 0; c < cfg.shape[r].size(); c++) {
+            if (cfg.shape[r][c] == 1) {
+                float x = cfg.startX + c * cfg.spacingX;
+                float y = cfg.startY + r * cfg.spacingY;
+                Color col = cfg.colors[r % cfg.colors.size()];
+                bricks.emplace_back(x, y, cfg.width, cfg.height, col, false);
+            }
         }
     }
 
-    int totalBricks = bricks.size();
-    int goldenCount = GetRandomValue(4, 6);
-
-    for (int i = 0; i < goldenCount; i++) {
+    int total = bricks.size();
+    int goldNum = GetRandomValue(4, 6);
+    for (int i = 0; i < goldNum && total > 0; i++) {
         int idx;
-        do {
-            idx = GetRandomValue(0, totalBricks - 1);
-        } while (bricks[idx].IsGolden());
-
-        bricks[idx] = Brick(
-            bricks[idx].GetRect().x,
-            bricks[idx].GetRect().y,
-            bricks[idx].GetRect().width,
-            bricks[idx].GetRect().height,
-            GOLD,
-            true
-        );
+        do { idx = GetRandomValue(0, total - 1); }
+        while (bricks[idx].IsGolden());
+        bricks[idx].SetGold(true);
     }
 
     winCount = bricks.size();
 }
+
 void Game::ResetGame() {
     lives = 3;
     gameTime = 0;

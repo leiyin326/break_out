@@ -21,6 +21,7 @@ public:
     Color GetColor() { return color; }
     // 新增：SetColor 方法声明（核心修复点）
     void SetColor(Color newColor);
+    void SetGold(bool g);
 };
 
 #endif

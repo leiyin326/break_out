@@ -11,7 +11,6 @@
 #include <vector>
 #include <fstream>
 #include <memory>
-// 新增：异步加载所需头文件
 #include <thread>
 #include <mutex>
 #include <future>
@@ -32,36 +31,31 @@ public:
         STATE_VICTORY
     };
 
-    // 新增：异步加载状态枚举
     enum class LoadState {
-        IDLE,       // 未加载
-        LOADING,    // 加载中
-        DONE        // 加载完成
+        IDLE,
+        LOADING,
+        DONE
     };
 
-    // ====================== 新增：关卡配置结构体 ======================
-    struct LevelConfig {
-        std::string name;
-        int rows;
-        int cols;
-        float width;
-        float height;
-        float startX;
-        float startY;
-        float spacingX;
-        float spacingY;
-        std::vector<Color> colors; // 关卡专属砖块颜色
+   struct LevelConfig {
+    std::string name;
+    float width;
+    float height;
+    float startX;
+    float startY;
+    float spacingX;
+    float spacingY;
+    std::vector<Color> colors;
+    std::vector<std::vector<int>> shape; // 加这行
     };
 
-    // ====================== 新增：存档数据结构体 ======================
     struct SaveData {
         int score;
         int lives;
         int currentLevelIndex;
         float gameTime;
-        // 版本号：用于后续存档升级
         int version = 1;
-        int maxUnlockedLevel; // 新增：最高解锁关卡
+        int maxUnlockedLevel;
         std::vector<bool> brickStates;
     };
 
@@ -78,23 +72,21 @@ private:
     int winCount;
     GameState currentState;
     void ResetAllProgress();
-    // 关卡解锁进度
     int maxUnlockedLevel = 0;
-    // ====================== 新增：存档提示弹窗相关 ======================
+
     enum class SavePromptState {
-        NONE,           // 无弹窗
-        LOAD_PROMPT,    // 加载存档提示（启动时）
-        SAVE_PROMPT     // 保存存档提示（退出/通关时）
+        NONE,
+        LOAD_PROMPT,
+        SAVE_PROMPT
     };
 
-    SavePromptState promptState = SavePromptState::NONE; // 当前弹窗状态
-    float promptTimer = 0.0f;                             // 弹窗显示计时（防止误触）
+    SavePromptState promptState = SavePromptState::NONE;
+    float promptTimer = 0.0f;
 
     std::vector<std::unique_ptr<PowerUpEffect>> powerUps;
-    std::unique_ptr<ParticlePool> brickParticles;    // 替换 ParticleSystem → ParticlePool
-    std::unique_ptr<ParticlePool> powerUpAura;       // 替换 ParticleSystem → ParticlePool
+    std::unique_ptr<ParticlePool> brickParticles;
+    std::unique_ptr<ParticlePool> powerUpAura;
     bool audioLoaded;
-
     PowerUpConfig powerUpCfg;
 
     struct {
@@ -130,33 +122,29 @@ private:
         float timeMultMin;
     } cfgGame;
 
-    // 新增：异步加载相关成员变量
     LoadState m_loadState = LoadState::IDLE;
     std::future<void> m_loadFuture;
-    std::mutex m_loadMutex;       // 保护共享状态的互斥锁
-    bool m_loadingSuccess = false; // 标记加载是否完成
-    Texture2D m_largeTexture;     // 异步加载的大纹理（加分项）
-    Image m_tempImage;            // 临时存储图片数据（加分项）
+    std::mutex m_loadMutex;
+    bool m_loadingSuccess = false;
+    Texture2D m_largeTexture = { 0 };
+    Image m_tempImage = { 0 };
 
-    // ====================== 新增：关卡/存档相关成员 ======================
-    std::vector<LevelConfig> levels;       // 所有关卡配置
-    int currentLevelIndex = 0;            // 当前选中的关卡索引
-    std::string saveFilePath = "savegame.json"; // 存档文件路径
+    std::vector<LevelConfig> levels;
+    int currentLevelIndex = 0;
+    std::string saveFilePath = "savegame.json";
 
     void CreateBricks();
     void ResetGame();
     void SpawnPowerUp(Vector2 pos);
     void CheckPowerUpCollisions();
     void CleanupExpiredPowerUps();
-    // 新增：异步加载函数声明
     void LoadLargeTextureAsync();
 
-    // ====================== 新增：关卡/存档核心方法 ======================
-    bool LoadLevelFromJSON(const std::string& path); // 加载单个关卡配置
-    void LoadAllLevels();                            // 加载所有关卡
-    bool SaveGame();                                 // 保存游戏存档
-    bool LoadGame();                                 // 加载游戏存档
-    Color StringToColor(const std::string& colorStr); // 字符串转Color辅助函数
+    bool LoadLevelFromJSON(const std::string& path);
+    void LoadAllLevels();
+    bool SaveGame();
+    bool LoadGame();
+    Color StringToColor(const std::string& colorStr);
 
 public:
     Game();

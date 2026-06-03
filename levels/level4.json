@@ -1,12 +1,18 @@
 {
     "name": "极难",
-    "rows": 6,
-    "cols": 9,
     "width": 75.0,
     "height": 25.0,
     "start_x": 30.0,
     "start_y": 80.0,
     "spacing_x": 85.0,
     "spacing_y": 35.0,
-    "colors": ["RED", "BLUE", "PURPLE", "ORANGE", "YELLOW", "GOLD"]
+    "colors": ["RED", "BLUE", "PURPLE", "ORANGE", "YELLOW", "GOLD"],
+    "shape": [
+        [1,0,1,0,1,0,1,0,1],
+        [0,1,0,1,0,1,0,1,0],
+        [1,0,1,0,1,0,1,0,1],
+        [0,1,0,1,0,1,0,1,0],
+        [1,0,1,0,1,0,1,0,1],
+        [0,1,0,1,0,1,0,1,0]
+    ]
 }
